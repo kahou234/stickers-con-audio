@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+desktop.ini
+*.mp4
+*.webp
+*.gif
+*.mp3
+*.ogg
+cookies-*.txt
+.env

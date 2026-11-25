@@ -1,0 +1,75 @@
+{
+  "manifest_version": 3,
+  "name": "Stickers con audio",
+  "version": "0.5.0",
+  "description": "Un panel encima de WhatsApp Web: pegás el link de un video (Instagram, TikTok, YouTube…), elegís el tramo y mandás el sticker con sonido. No oficial.",
+  "icons": {
+    "16": "iconos/16.png",
+    "48": "iconos/48.png",
+    "128": "iconos/128.png"
+  },
+  "action": {
+    "default_title": "Stickers con audio en WhatsApp Web",
+    "default_icon": {
+      "16": "iconos/16.png",
+      "48": "iconos/48.png"
+    }
+  },
+  "background": {
+    "service_worker": "fondo.js"
+  },
+  "permissions": [
+    "cookies",
+    "contextMenus",
+    "tabs",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "ventana/*"
+      ],
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost:4195/*",
+        "http://127.0.0.1:4195/*"
+      ],
+      "js": [
+        "ventana-puente.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "js": [
+        "wa-puente.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "js": [
+        "shirtep/logger.js",
+        "shirtep/convert.js",
+        "shirtep/wa.js",
+        "wa-mandar.js"
+      ],
+      "run_at": "document_idle",
+      "world": "MAIN"
+    }
+  ]
+}

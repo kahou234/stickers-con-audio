@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stickers con audio</title>
+<!-- La cara copia la de StikSound (github.com/SilverFeit/StikSound, MIT/Apache-2.0): columna al centro,
+     escenario de cuadritos, ✕ ⋯ ⬇ ➔ arriba y la barra del audio con 5s | 10s abajo.
+     En vez de pegar un sticker se pega un link, y se elige el tramo y el recorte. -->
+<link rel="stylesheet" href="ventana.css">
+</head>
+<body>
+<div class="app">
+  <div class="arriba">
+    <button class="ico" id="limpiar" type="button" title="Empezar de cero" aria-label="Empezar de cero">✕</button>
+    <form class="espacio linkArriba" id="formLinkArriba"><input id="campoLinkArriba" type="url" placeholder="Pegá otro link aquí…" autocomplete="off" required aria-label="Link del video"></form>
+    <button class="ico" id="btnOpciones" type="button" title="Opciones" aria-label="Opciones" aria-expanded="false">⋯</button>
+    <button class="ico" id="btnBajar" type="button" title="Descargar" aria-label="Descargar" aria-expanded="false" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg></button>
+    <button class="ico" id="btnHacer" type="button" title="Hacer el sticker" aria-label="Hacer el sticker" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></svg></button>
+
+    <div class="menu" id="menuOpciones" hidden>
+      <h3>Opciones</h3>
+      <div class="fila"><label for="fondo">Fondo (si no es cuadrado)</label><select id="fondo"><option value="negro">Negro</option><option value="blanco">Blanco</option></select></div>
+      <div class="fila"><label for="lado">Tamaño del GIF</label><select id="lado"><option value="256">256 px</option><option value="320">320 px</option><option value="384">384 px</option><option value="512" selected>512 px</option></select></div>
+      <div class="fila"><label for="fps">Cuadros del GIF</label><select id="fps"><option>10</option><option>12</option><option selected>15</option><option>20</option><option>24</option></select></div>
+      <div class="fila"><label for="colores">Colores del GIF</label><select id="colores"><option value="64">64</option><option value="128" selected>128</option><option value="256">256</option></select></div>
+      <div class="fila"><label for="kbps">Calidad del MP3</label><select id="kbps"><option value="32">32 kbps</option><option value="48">48 kbps</option><option value="64" selected>64 kbps</option><option value="96">96 kbps</option><option value="128">128 kbps</option></select></div>
+      <div class="fila"><label for="nombre">Nombre del archivo</label><input id="nombre" type="text" placeholder="opcional"></div>
+      <button class="opcion" type="button" id="abrirCarpeta">Abrir la carpeta de stickers</button>
+    </div>
+
+    <div class="menu" id="menuBajar" hidden>
+      <h3>Descargar</h3>
+      <a id="bajarMp4" class="principal" download><span>MP4 para WhatsApp</span><small id="pesoMp4"></small></a>
+      <a id="bajarGif" download><span>GIF</span><small id="pesoGif"></small></a>
+      <a id="bajarMp3" download><span>MP3</span><small id="pesoMp3"></small></a>
+      <a id="bajarWebp" download><span>WebP del sticker</span><small id="pesoWebp"></small></a>
+      <a id="bajarOgg" download><span>Audio del sticker (OGG)</span><small id="pesoOgg"></small></a>
+      <button class="opcion" type="button" id="abrirCarpeta2">Abrir la carpeta</button>
+    </div>
+  </div>
+
+  <div class="escenario" id="escenario">
+    <video id="video" playsinline preload="auto" hidden></video>
+    <video id="resultado" playsinline loop hidden></video>
+    <div class="marco" id="marco" hidden title="Arrastrá para elegir qué recortar"></div>
+    <div class="chips" id="chips" hidden>
+      <span class="chip" id="encuadre">
+        <button type="button" data-v="cuadrado" aria-pressed="true">Cuadrado</button>
+        <button type="button" data-v="completo" aria-pressed="false">Completo</button>
+      </span>
+      <span class="chip" id="borde">
+        <button type="button" data-v="no" aria-pressed="true">Sin borde</button>
+        <button type="button" data-v="si" aria-pressed="false">Borde blanco</button>
+      </span>
+    </div>
+    <div class="chips" id="chipVolver" hidden><span class="chip solo"><button type="button" id="volver">← Volver a editar</button></span></div>
+    <div class="pista" id="pista" hidden>Arrastrá el recuadro para elegir qué recortar</div>
+
+    <div class="tarjeta" id="tarjeta">
+      <div id="tarjetaLink">
+        <div class="mas">+</div>
+        <b>Pegá el link del video aquí</b>
+        <p>Instagram, TikTok, YouTube o lo que sea. También sirve <kbd>Ctrl</kbd>+<kbd>V</kbd> en cualquier lado.</p>
+        <form id="formLink"><input id="campoLink" type="url" placeholder="https://…" autocomplete="off" required><button type="submit">Traer</button></form>
+      </div>
+      <div id="tarjetaBajando" hidden>
+        <div class="titulo" id="bajandoTitulo">Bajando el video…</div>
+        <div class="progreso"><i id="bajandoBarra"></i></div>
+        <small id="bajandoTexto">Arrancando</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="abajo">
+    <div class="vacia" id="abajoVacia">
+      <div class="falso">El audio aparece cuando pegués un link</div>
+      <span class="tope" data-tope></span>
+    </div>
+    <div id="abajoLlena" hidden>
+      <div class="onda-fila">
+        <button class="play" id="play" type="button" aria-label="Escuchar el tramo" title="Escuchar el tramo (Espacio)"></button>
+        <div class="lienzo" id="lienzo"><canvas id="canvas"></canvas></div>
+      </div>
+      <div class="mapa" id="mapa" title="Todo el video: tocá para ir a esa parte"><canvas id="canvasMapa"></canvas></div>
+      <div class="datos">
+        <label>Inicio <input id="inicio" inputmode="decimal"></label>
+        <label>Fin <input id="fin" inputmode="decimal"></label>
+        <span class="cuenta" id="cuenta">0.0s / 10s</span>
+        <span class="tope" data-tope></span>
+      </div>
+    </div>
+  </div>
+  <div class="datos-sticker" id="datosSticker" hidden>
+    <p>Datos del sticker (opcional): WhatsApp los muestra debajo del sticker. Se recuerdan.</p>
+    <label><span>Paquete</span><input id="paquete" type="text" placeholder="Ej.: Mis memes" maxlength="128" autocomplete="off"></label>
+    <label><span>Autor</span><input id="autor" type="text" placeholder="Ej.: tu nombre o apodo" maxlength="128" autocomplete="off"></label>
+  </div>
+  <div class="mandar" id="filaMandar" hidden>
+    <select id="destino" aria-label="A dónde se manda">
+      <option value="propio">A mí, y elijo a quién reenviarlo</option>
+      <option value="abierto">Al chat abierto en WhatsApp Web</option>
+    </select>
+    <button type="button" id="btnMandar">Mandar a WhatsApp</button>
+  </div>
+  <p class="estado" id="estado"></p>
+</div>
+
+<section class="lamina" id="lamina" hidden>
+  <h2>Tus stickers</h2>
+  <div class="hoja" id="hoja"></div>
+</section>
+<audio id="audioSticker" preload="none"></audio>
+
+<script src="ventana.js"></script>
+</body>
+</html>
