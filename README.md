@@ -19,7 +19,7 @@ Pegás el link, elegís el pedacito que querés (sobre la onda del audio), recor
 
 Son dos piezas que corren **solo en tu compu**:
 
-1. **El ayudante** (`stickers.py`): un programita en Python que baja el video con yt-dlp y lo recorta con ffmpeg. Corre en `http://localhost:4195` y solo acepta pedidos de tu propia compu.
+1. **El ayudante** (`stickers.py`): un programita en Python que baja el video con yt-dlp y lo recorta con ffmpeg. Corre en `http://localhost:4195` y solo acepta pedidos de tu propia compu. No hace falta abrirlo: la extensión lo prende sola, sin ventana, cuando le das al botón.
 2. **La extensión de Chrome** (`stickers-extension/`): pone un panel encima de WhatsApp Web. Ahí elegís el tramo y el recorte, y cuando le das *Mandar*, arma el sticker (WebP animado + audio Ogg/Opus) y lo manda con tu sesión de WhatsApp Web.
 
 Nada se sube a ningún servidor que no sea WhatsApp.
@@ -65,15 +65,19 @@ python3 -m pip install -U "yt-dlp[default,curl-cffi]"
 3. Tocá **Cargar descomprimida** y elegí la carpeta `stickers-extension` (la que tiene adentro `manifest.json`).
 4. Fijala con el ícono del rompecabezas → chincheta.
 
-### 4. Prendé el ayudante
+### 4. Instalá el ayudante (una sola vez)
 
-En una terminal, dentro de la carpeta del proyecto:
+En la carpeta del proyecto, doble clic en **`instalar-ayudante.bat`** (Mac: **`instalar-ayudante.command`**; Linux: `python3 stickers.py instalar`). Después recargá la extensión en `chrome://extensions` (↻).
 
-```
-py stickers.py servir
-```
+Listo: desde ahí, cada vez que le das al botón de la extensión, el ayudante se prende solo en segundo plano (sin terminal) y queda prendido hasta que apagués la compu.
 
-En Mac o Linux: `python3 stickers.py servir`. Dejá esa terminal abierta mientras hacés stickers.
+Qué deja el instalador, para que sepás qué hay en tu compu:
+- Una carpeta `%LOCALAPPDATA%\StickersConAudio\` (Mac/Linux: `~/.stickers-con-audio/`) con un lanzador, su manifiesto y `ayudante.log`.
+- El registro de ese manifiesto para Chrome, Edge, Brave y Chromium ([Native Messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging)): en Windows, claves en `HKEY_CURRENT_USER\Software\...\NativeMessagingHosts\com.stickers_con_audio.ayudante` (no pide administrador); en Mac/Linux, un `.json` en la carpeta `NativeMessagingHosts` de cada navegador.
+
+Solo la extensión cargada desde esta carpeta puede prenderlo. Si movés la carpeta, volvé a correr el instalador. Para quitarlo todo: **`desinstalar-ayudante.bat`** (Mac: `.command`).
+
+Si preferís prenderlo a mano: `py stickers.py servir` (Mac/Linux: `python3 stickers.py servir`).
 
 ## Uso
 
@@ -102,7 +106,8 @@ En **WhatsApp Web** el sonido a veces no se reproduce después de recargar la p�
 
 ## Problemas comunes
 
-- **El panel dice que el ayudante está apagado:** prendelo con `py stickers.py servir` (paso 4).
+- **El panel dice "Falta un paso":** corré `instalar-ayudante` (paso 4) y recargá la extensión. Si moviste la carpeta, correlo otra vez.
+- **El panel dice que no pudo prender el ayudante:** mirá `ayudante.log` en la carpeta del paso 4; casi siempre falta ffmpeg o yt-dlp.
 - **Un video no baja:** actualizá yt-dlp con `py -m pip install -U --pre "yt-dlp[default,curl-cffi]"`. Los sitios cambian seguido.
 - **Instagram pide sesión:** iniciá sesión en Instagram en ese mismo Chrome. La extensión le pasa al ayudante solo las cookies de ese sitio, en tu compu, y se borran apenas termina la bajada.
 - **El panel no aparece:** recargá WhatsApp Web (F5). Las pestañas abiertas antes de instalar la extensión no la tienen.

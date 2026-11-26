@@ -501,12 +501,22 @@ if (EMBEBIDO) document.documentElement.classList.add("embebido");
 // lo recordado (en el panel viene de chrome.storage, que es asíncrono)
 if (EXT) chrome.storage.local.get(null).then((m) => { memoria._cache = m || {}; leerMemoria(); }).catch(leerMemoria);
 else leerMemoria();
+const AVISO_INSTALAR = "Falta un paso (una sola vez por compu): en la carpeta del proyecto (donde está <b>stickers.py</b>) dale doble clic a " +
+  "<b>instalar-ayudante.bat</b> (Mac: <b>instalar-ayudante.command</b>). Después cerrá y abrí este panel: desde ahí el botón de la extensión prende el ayudante solo.";
 async function arrancar() {
-  // en el panel, el ayudante puede estar apagado: se dice cómo prenderlo en vez de fallar callado
-  try { const r = await fetch(`${BASE}/api/hola`); if (!r.ok) throw new Error(); }
-  catch (e) {
-    return estadoHtml("El ayudante de stickers está apagado. Prendelo: en una terminal, en la carpeta del proyecto, corré " +
-      "<b>py stickers.py servir</b> (Mac: <b>python3 stickers.py servir</b>). Después cerrá y abrí este panel.", "error");
+  // en el panel, el ayudante puede estar apagado: la extensión lo prende sola (Native Messaging); si no puede,
+  // se dice por qué en vez de fallar callado
+  const hola = async () => { try { return (await fetch(`${BASE}/api/hola`, { cache: "no-store" })).ok; } catch (e) { return false; } };
+  if (!(await hola())) {
+    estado("Prendiendo el ayudante…");
+    let p = { ok: false };
+    try { p = (EXT && await chrome.runtime.sendMessage({ stk: "prender" })) || p; } catch (e) { p = { ok: false, error: String(e.message || e) }; }
+    if (!p.ok || !(await hola())) {
+      if (p.falta) return estadoHtml(AVISO_INSTALAR + ` <span style="opacity:.6">(Chrome: ${esc(p.error || "")})</span>`, "error");
+      return estadoHtml("No pude prender el ayudante de stickers. " + esc(p.error || "") +
+        " Probá cerrar y abrir este panel; si sigue, corré otra vez <b>instalar-ayudante</b>.", "error");
+    }
+    estado("");
   }
   if (q.get("trabajo")) seguir(q.get("trabajo"));
   else if (q.get("url")) { $("campoLink").value = q.get("url"); traer(q.get("url")); }

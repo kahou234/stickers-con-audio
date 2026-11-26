@@ -5,7 +5,9 @@ Baja el video con yt-dlp, deja elegir el tramo y el recorte en la ventana y saca
 El sticker de WhatsApp (WebP + Ogg/Opus) lo arma y lo manda, dentro de WhatsApp Web, el código de
 WA-audio-stickers de Shirtep (stickers-extension/shirtep/).
 
-    python stickers.py servir          # la ventana en http://localhost:4195 (en Windows: py stickers.py servir)
+    python stickers.py instalar        # una vez: que el botón de la extensión prenda el ayudante solo
+                                       # (es lo que hacen instalar-ayudante.bat / instalar-ayudante.command)
+    python stickers.py servir          # a mano: la ventana en http://localhost:4195 (en Windows: py stickers.py servir)
     python stickers.py traer <link>    # solo baja el video (prueba)
 
 Los archivos quedan en ~/Videos/StickersConAudio (Mac: ~/Movies/StickersConAudio), o donde diga STICKERS_CARPETA.
@@ -628,27 +630,195 @@ class _ServidorUnico(ThreadingHTTPServer):
         super().server_bind()
 
 
-def servir(puerto=PUERTO):
+def servir(puerto=PUERTO, salir_si_hay=False):
     try:
         srv = _ServidorUnico(("127.0.0.1", puerto), Ventana)
     except OSError:
         print(f"Ya hay una ventana de stickers en http://localhost:{puerto}: uso esa.", flush=True)
+        if salir_si_hay:
+            return
         while True:
             time.sleep(3600)
     print(f"Ventana de stickers en http://localhost:{puerto}", flush=True)
     srv.serve_forever()
 
 
+# ---------- prender desde la extensión (Native Messaging de Chrome) ----------
+# El clic en la extensión le pide a Chrome que corra `stickers.py arranque`; eso prende el ayudante en segundo
+# plano (sin ventana) si estaba apagado y contesta. Para que Chrome sepa dónde está, se instala una vez con
+# `instalar-ayudante.bat` (Mac: `instalar-ayudante.command`), que corre `stickers.py instalar`.
+
+HOST = "com.stickers_con_audio.ayudante"
+EXTENSION = Path(__file__).resolve().parent / "stickers-extension"
+CASA_HOST = (Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "StickersConAudio" if sys.platform == "win32"
+             else Path.home() / ".stickers-con-audio")
+# dónde busca cada navegador (Chrome, Edge, Brave, Chromium) el manifiesto del ayudante
+REGS = [rf"Software\{n}\NativeMessagingHosts\{HOST}"
+        for n in (r"Google\Chrome", r"Microsoft\Edge", r"BraveSoftware\Brave-Browser", "Chromium")]
+_SOP = Path.home() / "Library/Application Support"
+DIRS_MANIFIESTO = {  # Mac y Linux: los manifiestos van en estas carpetas
+    "darwin": [_SOP / n / "NativeMessagingHosts" for n in
+               ("Google/Chrome", "Microsoft Edge", "BraveSoftware/Brave-Browser", "Chromium")],
+    "linux": [Path.home() / ".config" / n / "NativeMessagingHosts" for n in
+              ("google-chrome", "microsoft-edge", "BraveSoftware/Brave-Browser", "chromium")],
+}
+
+
+def prendido(ms=800):
+    import urllib.request
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{PUERTO}/api/hola", timeout=ms / 1000) as r:
+            return json.loads(r.read()).get("app") == "stickers"
+    except Exception:
+        return False
+
+
+def prender():
+    """Arranca `servir` aparte, sin ventana, y espera a que conteste. Lo que imprima va a un log."""
+    if prendido():
+        return {"ok": True, "ya": True}
+    CASA_HOST.mkdir(parents=True, exist_ok=True)
+    log = CASA_HOST / "ayudante.log"
+    if log.exists() and log.stat().st_size > 1 << 20:
+        log.unlink()
+    cmd = [sys.executable, str(Path(__file__).resolve()), "servir", "--salir-si-hay"]
+    kw = {"stdin": subprocess.DEVNULL, "stdout": log.open("a", encoding="utf-8"), "stderr": subprocess.STDOUT,
+          "cwd": str(Path(__file__).resolve().parent)}
+    if sys.platform == "win32":
+        base = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+        try:  # que no muera cuando Chrome cierra el proceso que lo prendió
+            subprocess.Popen(cmd, creationflags=base | subprocess.CREATE_BREAKAWAY_FROM_JOB, **kw)
+        except OSError:
+            subprocess.Popen(cmd, creationflags=base, **kw)
+    else:
+        subprocess.Popen(cmd, start_new_session=True, **kw)
+    t0 = time.time()
+    while time.time() - t0 < 20:
+        if prendido():
+            return {"ok": True}
+        time.sleep(0.3)
+    cola = log.read_text(encoding="utf-8", errors="replace")[-600:] if log.exists() else ""
+    return {"ok": False, "error": "El ayudante no arrancó. " + cola.strip()}
+
+
+def arranque():
+    """Lo corre Chrome: lee un mensaje (4 bytes de largo + JSON), prende el ayudante y contesta igual."""
+    import struct
+    if sys.platform == "win32":
+        import msvcrt
+        msvcrt.setmode(sys.stdin.fileno(), os.O_BINARY)
+        msvcrt.setmode(sys.stdout.fileno(), os.O_BINARY)
+    largo = sys.stdin.buffer.read(4)
+    if len(largo) == 4:
+        sys.stdin.buffer.read(struct.unpack("<I", largo)[0])
+    try:
+        r = prender()
+    except Exception as e:
+        r = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+    cuerpo = json.dumps(r, ensure_ascii=False).encode("utf-8")
+    sys.stdout.buffer.write(struct.pack("<I", len(cuerpo)) + cuerpo)
+    sys.stdout.buffer.flush()
+
+
+def _id_desde_carpeta(carpeta):
+    """El id que Chrome le da a una extensión 'descomprimida': sale del hash de la ruta de su carpeta."""
+    datos = str(carpeta).encode("utf-16-le" if sys.platform == "win32" else "utf-8")
+    return "".join(chr(ord("a") + int(c, 16)) for c in hashlib.sha256(datos).hexdigest()[:32])
+
+
+def _ids_extension():
+    s = str(EXTENSION)
+    variantes = {s, s[0].upper() + s[1:], s[0].lower() + s[1:]} if sys.platform == "win32" else {s}
+    ids = {_id_desde_carpeta(v) for v in variantes}
+    # y los que Chrome tenga anotados con esta carpeta (en cualquier perfil)
+    raiz = {"win32": Path(os.environ.get("LOCALAPPDATA", "")) / "Google/Chrome/User Data",
+            "darwin": Path.home() / "Library/Application Support/Google/Chrome"}.get(
+        sys.platform, Path.home() / ".config/google-chrome")
+    if raiz.exists():
+        for pref in list(raiz.glob("*/Secure Preferences")) + list(raiz.glob("*/Preferences")):
+            try:
+                ext = json.loads(pref.read_text(encoding="utf-8")).get("extensions", {}).get("settings", {})
+                for i, d in ext.items():
+                    ruta = isinstance(d, dict) and d.get("path")
+                    if ruta and Path(ruta).resolve() == EXTENSION:
+                        ids.add(i)
+            except Exception:
+                continue
+    return sorted(ids)
+
+
+def instalar():
+    CASA_HOST.mkdir(parents=True, exist_ok=True)
+    py = Path(sys.executable)
+    if sys.platform == "win32":
+        lanzador = CASA_HOST / "ayudante.bat"
+        lanzador.write_text(f'@echo off\r\n"{py}" "{Path(__file__).resolve()}" arranque %*\r\n', encoding="utf-8")
+    else:
+        lanzador = CASA_HOST / "ayudante.sh"
+        lanzador.write_text(f'#!/bin/sh\nexec "{py}" "{Path(__file__).resolve()}" arranque "$@"\n', encoding="utf-8")
+        lanzador.chmod(0o755)
+    ids = _ids_extension()
+    manifiesto = {"name": HOST, "description": "Prende el ayudante de Stickers con audio", "path": str(lanzador),
+                  "type": "stdio", "allowed_origins": [f"chrome-extension://{i}/" for i in ids]}
+    texto = json.dumps(manifiesto, indent=2)
+    if sys.platform == "win32":
+        import winreg
+        f = CASA_HOST / f"{HOST}.json"
+        f.write_text(texto, encoding="utf-8")
+        for reg in REGS:
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, reg) as k:
+                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, str(f))
+        donde = rf"HKEY_CURRENT_USER\{REGS[0]}" + " (y lo mismo para Edge, Brave y Chromium)"
+    else:
+        dirs = DIRS_MANIFIESTO.get(sys.platform, [])
+        for d in dirs:
+            if d.parent.exists():  # solo en los navegadores que estén instalados
+                d.mkdir(exist_ok=True)
+                (d / f"{HOST}.json").write_text(texto, encoding="utf-8")
+        donde = ", ".join(str(d) for d in dirs if d.exists())
+    print("Listo: el botón de la extensión ya prende el ayudante solo.")
+    print(f"  Archivos: {CASA_HOST}")
+    print(f"  Chrome lo encuentra en: {donde}")
+    print(f"  Extensión (ids): {', '.join(ids)}")
+    print("Si movés la carpeta del proyecto, volvé a correr el instalador. Para quitarlo: desinstalar-ayudante.")
+
+
+def desinstalar():
+    if sys.platform == "win32":
+        import winreg
+        for reg in REGS:
+            try:
+                winreg.DeleteKey(winreg.HKEY_CURRENT_USER, reg)
+            except FileNotFoundError:
+                pass
+    else:
+        for d in DIRS_MANIFIESTO.get(sys.platform, []):
+            (d / f"{HOST}.json").unlink(missing_ok=True)
+    for f in ("ayudante.bat", "ayudante.sh", f"{HOST}.json"):
+        (CASA_HOST / f).unlink(missing_ok=True)
+    print("Quitado: la extensión ya no prende el ayudante (si está prendido, sigue hasta que apagués la compu).")
+
+
 def main():
+    # Chrome corre el lanzador con `arranque` (y le agrega el origen): ahí stdout es el canal, nada de prints
+    if len(sys.argv) > 1 and sys.argv[1] == "arranque":
+        return arranque()
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description="Stickers con audio: link → GIF + MP3")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("servir")
+    s = sub.add_parser("servir")
+    s.add_argument("--salir-si-hay", action="store_true", help="si ya hay uno prendido, salir en vez de esperar")
+    sub.add_parser("instalar", help="que el botón de la extensión prenda el ayudante (una vez por compu)")
+    sub.add_parser("desinstalar", help="quitar lo que puso 'instalar'")
     t = sub.add_parser("traer")
     t.add_argument("url")
     a = ap.parse_args()
     if a.cmd == "servir":
-        servir()
+        servir(salir_si_hay=a.salir_si_hay)
+    elif a.cmd == "instalar":
+        instalar()
+    elif a.cmd == "desinstalar":
+        desinstalar()
     else:
         tid = traer(a.url)
         while (e := estado(tid))["estado"] in ("bajando", "convirtiendo"):

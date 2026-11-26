@@ -54,7 +54,34 @@ async function abrirPanel(url, desdeWhatsApp) {
   await chrome.tabs.sendMessage(tab.id, url ? { stk: "panel", url } : { stk: "panel", alternar: !!desdeWhatsApp });
 }
 
+// ---------- prender el ayudante ----------
+// Chrome corre `stickers.py arranque` (Native Messaging) y eso lo prende sin ventana si estaba apagado.
+// Para que Chrome lo encuentre se instala una vez con instalar-ayudante.bat (Mac: instalar-ayudante.command).
+const HOST = "com.stickers_con_audio.ayudante";
+let prendiendo = null;
+async function hola() {
+  try { const r = await fetch(`${AYUDANTE}/api/hola`, { cache: "no-store" }); return r.ok; } catch (e) { return false; }
+}
+function prender() {
+  if (!prendiendo) {
+    prendiendo = (async () => {
+      if (await hola()) return { ok: true, ya: true };
+      try {
+        const r = await chrome.runtime.sendNativeMessage(HOST, { cmd: "prender" });
+        return r || { ok: false, error: "El ayudante no contestó" };
+      } catch (e) {
+        const m = String(e && e.message || e);
+        // "Specified native messaging host not found" / "Access to the specified native messaging host is forbidden"
+        if (/not found|forbidden/i.test(m)) return { ok: false, falta: true, error: m };
+        return { ok: false, error: m };
+      }
+    })().finally(() => { prendiendo = null; });
+  }
+  return prendiendo;
+}
+
 chrome.action.onClicked.addListener((tab) => {
+  prender();
   const url = tab && tab.url;
   abrirPanel(esVideo(url) ? url : null, !!url && url.startsWith(WA)).catch((e) => console.error(e));
 });
@@ -65,12 +92,15 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
+  prender();
   const url = info.menuItemId === "link" ? info.linkUrl : (info.pageUrl || (tab && tab.url));
   abrirPanel(esVideo(url) ? url : null, false).catch((e) => console.error(e));
 });
 
 // ---------- bajar un link con tu sesión ----------
 async function traer(url) {
+  const p = await prender();
+  if (!p.ok) throw new Error(p.falta ? "Falta instalar el ayudante (una vez): doble clic en instalar-ayudante.bat" : p.error);
   let cookies = [];
   try {
     cookies = (await chrome.cookies.getAll({ url })).map((c) => ({
@@ -130,6 +160,7 @@ chrome.runtime.onMessage.addListener((msg, de, responder) => {
   if (!msg) return;
   if (msg.stk === "paso") { avisarPaso(msg.texto); return; }
   const fallar = (e) => responder({ ok: false, error: String(e && e.message || e) });
+  if (msg.stk === "prender") { prender().then(responder).catch(fallar); return true; }
   if (msg.stk === "traer") { traer(msg.url).then(responder).catch(fallar); return true; }
   if (msg.stk === "mandar") {
     quienPide = de.tab ? { tab: de.tab.id, frame: de.frameId || 0 } : null;
