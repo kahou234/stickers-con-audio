@@ -45,7 +45,10 @@
   <div class="escenario" id="escenario">
     <video id="video" playsinline preload="auto" hidden></video>
     <video id="resultado" playsinline loop hidden></video>
-    <div class="marco" id="marco" hidden title="Arrastrá para elegir qué recortar"></div>
+    <div class="marco" id="marco" hidden title="Arrastrá para moverlo; las esquinas lo achican o agrandan">
+      <span class="asa" data-c="nw"></span><span class="asa" data-c="ne"></span>
+      <span class="asa" data-c="sw"></span><span class="asa" data-c="se"></span>
+    </div>
     <div class="chips" id="chips" hidden>
       <span class="chip" id="encuadre">
         <button type="button" data-v="cuadrado" aria-pressed="true">Cuadrado</button>
@@ -57,7 +60,7 @@
       </span>
     </div>
     <div class="chips" id="chipVolver" hidden><span class="chip solo"><button type="button" id="volver">← Volver a editar</button></span></div>
-    <div class="pista" id="pista" hidden>Arrastrá el recuadro para elegir qué recortar</div>
+    <div class="pista" id="pista" hidden>Arrastrá el recuadro a donde querás; las esquinas lo achican y la rueda hace zoom</div>
 
     <div class="tarjeta" id="tarjeta">
       <div id="tarjetaLink">

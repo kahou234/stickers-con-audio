@@ -58,6 +58,11 @@ button,input,select{font:inherit;color:inherit}
 .marco::after{content:"";position:absolute;inset:-1px;border:1px dashed rgba(0,0,0,.35);pointer-events:none}
 .marco.con-borde::before{content:"";position:absolute;inset:0;border:var(--grosor,6px) solid #fff;pointer-events:none}
 .marco:active{cursor:grabbing}
+.asa{position:absolute;width:16px;height:16px;background:#fff;border:1px solid rgba(0,0,0,.45);touch-action:none;z-index:1}
+.asa[data-c=nw]{left:-8px;top:-8px;cursor:nwse-resize}
+.asa[data-c=se]{right:-8px;bottom:-8px;cursor:nwse-resize}
+.asa[data-c=ne]{right:-8px;top:-8px;cursor:nesw-resize}
+.asa[data-c=sw]{left:-8px;bottom:-8px;cursor:nesw-resize}
 .chips{position:absolute;left:10px;top:10px;display:flex;gap:6px;z-index:2}
 .chip{display:inline-flex;background:rgba(18,20,24,.82);border:1px solid var(--borde);border-radius:99px;overflow:hidden;backdrop-filter:blur(6px)}
 .chip button{border:0;background:none;padding:5px 10px;font-size:12px;cursor:pointer;color:var(--suave)}

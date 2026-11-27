@@ -292,9 +292,20 @@ def encuadre_vf(d, lado, relleno=None):
     b = borde_px(lado) if d.get("borde") else 0
     adentro = lado - 2 * b
     if d.get("encuadre") == "cuadrado":
-        pos = max(0.0, min(1.0, float(d.get("pos", 0.5))))
-        s = "min(iw\\,ih)"
-        vf = f"crop={s}:{s}:(iw-{s})*{pos:.3f}:(ih-{s})*{pos:.3f},scale={adentro}:{adentro}:flags=lanczos"
+        caja = d.get("caja")
+        if isinstance(caja, dict):
+            # recuadro libre de la ventana: x, y = esquina de arriba a la izquierda (fracción del ancho y del alto);
+            # l = lado (fracción del lado corto del video). Se puede achicar (zoom) y poner donde sea.
+            l = max(0.05, min(1.0, float(caja.get("l", 1))))
+            x = max(0.0, min(1.0, float(caja.get("x", 0))))
+            y = max(0.0, min(1.0, float(caja.get("y", 0))))
+            s = f"trunc({l:.4f}*min(iw\\,ih)/2)*2"
+            vf = (f"crop={s}:{s}:min(trunc({x:.4f}*iw)\\,iw-ow):min(trunc({y:.4f}*ih)\\,ih-oh),"
+                  f"scale={adentro}:{adentro}:flags=lanczos")
+        else:  # compatibilidad: solo se movía a lo largo del lado largo
+            pos = max(0.0, min(1.0, float(d.get("pos", 0.5))))
+            s = "min(iw\\,ih)"
+            vf = f"crop={s}:{s}:(iw-{s})*{pos:.3f}:(ih-{s})*{pos:.3f},scale={adentro}:{adentro}:flags=lanczos"
         return vf + (f",pad={lado}:{lado}:{b}:{b}:color=white" if b else "")
     vf = f"scale={adentro}:{adentro}:force_original_aspect_ratio=decrease:flags=lanczos"
     if b:

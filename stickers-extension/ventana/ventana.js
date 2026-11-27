@@ -34,7 +34,7 @@ const C = { onda: "#3A4150", ondaSel: "#25D366", sel: "rgba(37,211,102,.14)", bo
 
 const EMBEBIDO = new URLSearchParams(location.search).has("embebido");
 const st = { id: null, url: "", dur: 0, ancho: 0, alto: 0, titulo: "", ini: 0, fin: 0, v0: 0, v1: 1,
-  picos: [], porSeg: 0, tope: 10, encuadre: "cuadrado", pos: 0.5, borde: false, loop: false, hecho: null };
+  picos: [], porSeg: 0, tope: 10, encuadre: "cuadrado", pos: 0.5, caja: { l: 1, x: 0, y: 0 }, borde: false, loop: false, hecho: null };
 
 /* ---------- utilidades ---------- */
 async function api(ruta, datos) {
@@ -126,6 +126,7 @@ function fallo(msj) {
 function abrir(t) {
   Object.assign(st, { id: t.id, url: t.url || "", dur: t.duracion, ancho: t.ancho, alto: t.alto, titulo: t.titulo || "",
     picos: [], porSeg: 0, pos: 0.5, hecho: null });
+  st.caja = cajaCentrada(1);
   $("filaMandar").hidden = true; $("btnHacer").classList.remove("listo"); $("datosSticker").hidden = false;
   st.encuadre = st.ancho === st.alto ? "completo" : "cuadrado";
   pintarEncuadre();
@@ -337,27 +338,74 @@ function rectVideo() {
   const k = Math.min(e.width / vw, e.height / vh), w = vw * k, h = vh * k;
   return { x: (e.width - w) / 2, y: (e.height - h) / 2, w, h };
 }
+/* El recuadro (siempre cuadrado) se mueve a cualquier lado y se achica o agranda desde sus esquinas o con la
+   rueda. st.caja: x, y = esquina de arriba a la izquierda (fracción del ancho y del alto del video);
+   l = lado (fracción del lado corto). El ayudante recorta exactamente eso. */
+const LADO_MIN = 0.15;
+function cajaCentrada(l) {
+  const W = st.ancho || 1, H = st.alto || 1, lado = l * Math.min(W, H);
+  return { l, x: (W - lado) / 2 / W, y: (H - lado) / 2 / H };
+}
+// de la caja (fracciones) a píxeles de pantalla, y al revés, siempre dentro del video
+function cajaEnPantalla(r) {
+  const lado = st.caja.l * Math.min(r.w, r.h);
+  return { lado, left: r.x + st.caja.x * r.w, top: r.y + st.caja.y * r.h };
+}
+function ponerCaja(r, left, top, lado) {
+  lado = Math.max(LADO_MIN * Math.min(r.w, r.h), Math.min(Math.min(r.w, r.h), lado));
+  left = Math.max(r.x, Math.min(r.x + r.w - lado, left));
+  top = Math.max(r.y, Math.min(r.y + r.h - lado, top));
+  st.caja = { l: lado / Math.min(r.w, r.h), x: (left - r.x) / r.w, y: (top - r.y) / r.h };
+}
 function pintarMarco() {
-  const m = $("marco"), ver = !!st.id && st.encuadre === "cuadrado" && $("resultado").hidden && st.ancho !== st.alto;
+  const m = $("marco"), ver = !!st.id && st.encuadre === "cuadrado" && $("resultado").hidden;
   m.hidden = !ver; $("pista").hidden = !ver || st.movioMarco;
   if (!ver) return;
-  const r = rectVideo(), lado = Math.min(r.w, r.h);
-  m.style.width = m.style.height = `${lado}px`;
+  const r = rectVideo(), c = cajaEnPantalla(r);
+  m.style.width = m.style.height = `${c.lado}px`;
   m.classList.toggle("con-borde", st.borde);
-  m.style.setProperty("--grosor", `${Math.max(2, lado * 12 / 512)}px`);
-  m.style.left = `${r.x + (r.w - lado) * st.pos}px`; m.style.top = `${r.y + (r.h - lado) * st.pos}px`;
+  m.style.setProperty("--grosor", `${Math.max(2, c.lado * 12 / 512)}px`);
+  m.style.left = `${c.left}px`; m.style.top = `${c.top}px`;
 }
 video.addEventListener("loadedmetadata", pintarMarco);
 let arrMarco = null;
-$("marco").addEventListener("pointerdown", (ev) => { arrMarco = { x: ev.clientX, y: ev.clientY, pos: st.pos }; $("marco").setPointerCapture(ev.pointerId); });
+$("marco").addEventListener("pointerdown", (ev) => {
+  const r = rectVideo();
+  arrMarco = { x: ev.clientX, y: ev.clientY, r, c: cajaEnPantalla(r), esquina: ev.target.dataset.c || null };
+  $("marco").setPointerCapture(ev.pointerId);
+  ev.preventDefault();
+});
 $("marco").addEventListener("pointermove", (ev) => {
   if (!arrMarco) return;
-  const r = rectVideo(), lado = Math.min(r.w, r.h), libre = Math.max(r.w, r.h) - lado;
-  const d = r.w > r.h ? ev.clientX - arrMarco.x : ev.clientY - arrMarco.y;
-  st.pos = libre > 0 ? Math.max(0, Math.min(1, arrMarco.pos + d / libre)) : 0.5;
+  const { r, c, esquina } = arrMarco, dx = ev.clientX - arrMarco.x, dy = ev.clientY - arrMarco.y;
+  if (!esquina) ponerCaja(r, c.left + dx, c.top + dy, c.lado);
+  else {
+    // la esquina contraria queda fija; el lado crece o se achica con el arrastre en diagonal
+    const d = { se: (dx + dy) / 2, nw: -(dx + dy) / 2, ne: (dx - dy) / 2, sw: (dy - dx) / 2 }[esquina];
+    const derecha = c.left + c.lado, abajo = c.top + c.lado;
+    const max = {
+      se: Math.min(r.x + r.w - c.left, r.y + r.h - c.top),
+      nw: Math.min(derecha - r.x, abajo - r.y),
+      ne: Math.min(r.x + r.w - c.left, abajo - r.y),
+      sw: Math.min(derecha - r.x, r.y + r.h - c.top),
+    }[esquina];
+    const lado = Math.max(LADO_MIN * Math.min(r.w, r.h), Math.min(max, c.lado + d));
+    const left = esquina === "nw" || esquina === "sw" ? derecha - lado : c.left;
+    const top = esquina === "nw" || esquina === "ne" ? abajo - lado : c.top;
+    ponerCaja(r, left, top, lado);
+  }
   st.movioMarco = true; quedoViejo(); pintarMarco();
 });
 $("marco").addEventListener("pointerup", () => { arrMarco = null; });
+// rueda sobre el video: zoom del recuadro alrededor de su centro
+$("escenario").addEventListener("wheel", (ev) => {
+  if ($("marco").hidden) return;
+  ev.preventDefault();
+  const r = rectVideo(), c = cajaEnPantalla(r);
+  const lado = c.lado * Math.exp(ev.deltaY * 0.0015), cx = c.left + c.lado / 2, cy = c.top + c.lado / 2;
+  ponerCaja(r, cx - lado / 2, cy - lado / 2, lado);
+  st.movioMarco = true; quedoViejo(); pintarMarco();
+}, { passive: false });
 
 /* ---------- menús ---------- */
 function cerrarMenus() {
@@ -434,7 +482,7 @@ async function hacer() {
   const b = $("btnHacer"); b.disabled = true; estado("Haciendo el GIF, el MP3 y el MP4…");
   try {
     const r = await api("/api/exportar", {
-      id: st.id, inicio: st.ini, fin: st.fin, tope: st.tope, encuadre: st.encuadre, pos: st.pos, borde: st.borde, fondo: $("fondo").value,
+      id: st.id, inicio: st.ini, fin: st.fin, tope: st.tope, encuadre: st.encuadre, pos: st.pos, caja: st.caja, borde: st.borde, fondo: $("fondo").value,
       lado: +$("lado").value, fps: +$("fps").value, kbps: +$("kbps").value, colores: +$("colores").value,
       nombre: $("nombre").value.trim() || null, paquete: $("paquete").value.trim(), autor: $("autor").value.trim(),
     });
